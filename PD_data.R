@@ -2,6 +2,15 @@
 
 library('GEOquery')
 library('Biobase')
+library('limma')
+library('tidyverse')
+
+##########
+
+# Parametres for analysis
+
+## Top k d.e. probes
+k = 100
 
 ##########
 
@@ -51,4 +60,46 @@ if (LogC) {
   ex[which(ex <= 0)] <- NaN
   exprs(gset) <- log2(ex)
 }
+
+## set up the data and proceed with analysis
+sml = paste("G", sml, sep = "")
+fl = as.factor(sml)
+gset$description = fl
+design = stats::model.matrix( ~ description + 0, gset)
+colnames(design) = levels(fl)
+fit = limma::lmFit(gset, design)
+cont.matrix = limma::makeContrasts(G1 - G0, levels = design)
+fit2 = limma::contrasts.fit(fit, cont.matrix)
+fit2 = limma::eBayes(fit2, 0.01)
+tT = limma::topTable(fit2,
+               adjust = "fdr",
+               sort.by = "B",
+               number = k)
+
+tT =
+  subset(
+    tT,
+    select = c(
+      "ID",
+      "adj.P.Val",
+      "P.Value",
+      "t",
+      "B",
+      "logFC",
+      "Gene.symbol",
+      "Gene.title"
+    )
+  )
+
+names = Biobase::featureNames(gset)
+tT$ID = factor(tT$ID, levels = names)
+gene_new = c(tT$ID)
+gset_new = gset[gene_new]
+
+data = gset_new %>% 
+  Biobase::exprs(.) %>% 
+  t(.)
+
+y = design[,1] %>% 
+  as.numeric(.)
 
